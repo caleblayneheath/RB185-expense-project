@@ -2,20 +2,6 @@
 
 require 'pg'
 
-def display_help
-  puts <<~HELP
-    An expense recording system
-
-    Commands:
-
-    add AMOUNT MEMO [DATE] - record a new expense
-    clear - delete all expenses
-    list - list all expenses
-    delete NUMBER - remove expense with id NUMBER
-    search QUERY - list expenses with a matching memo field
-  HELP
-end
-
 class ExpenseData
   def initialize
    @connection = PG.connect(dbname: 'expenses')
@@ -23,44 +9,81 @@ class ExpenseData
 
   def list_expenses
     result = @connection.exec('SELECT * FROM expenses ORDER BY created_on, id;')
+    display_expenses(result)
+  end
 
+  def add_expenses(amount, memo, created_on)
+    sql = "INSERT INTO expenses(amount, memo, created_on) VALUES ($1, $2, $3);" 
+    @connection.exec_params(sql, [amount, memo, created_on])  
+  end
+
+  def delete_expenses(expense_id)
+    # try selecting id
+    # if value of result is empty, return error message
+    # if value exists, display that result has been deleted (or store it for display later)
+    # delete the expense using id
+  end
+
+  def search_expenses(query)
+    sql = "SELECT * FROM expenses WHERE memo ILIKE $1 ORDER BY created_on, id;"
+    result = @connection.exec_params(sql, ["%#{query}%"])
+    display_expenses(result)
+  end
+
+  private
+
+  def display_expenses(result)
     result.each do |row|
       columns = [ row['id'].rjust(3), 
                   row['created_on'].rjust(10), 
                   row['amount'].rjust(12),
                   row['memo'] ]
       
-      puts columns.join(' | ')
+      puts columns.join(' | ') 
     end
-  end
-
-  def add_expenses(args)
-    amount, memo, created_on = args
-
-    abort 'You must provide an amount and memo.' unless amount =~ /^\d{1,}\.\d\d$/ && memo 
-    
-    created_on = created_on || Date.today
-
-    sql = "INSERT INTO expenses(amount, memo, created_on) VALUES ($1, $2, $3);" 
-    @connection.exec_params(sql, [amount, memo, created_on])  
   end
 end
 
 class CLI
   def initialize
-    ed = ExpenseData.new
+    @application = ExpenseData.new
+  end
+  
+  def run(args)
+    command = args.shift
+    
+    case command
+    when 'add'
+      amount, memo, created_on = args
+      created_on = created_on || Date.today
+      abort 'You must provide an amount and memo.' unless amount =~ /^\d{1,}\.\d\d$/ && memo   
+      @application.add_expenses(amount, memo, created_on)
+    when 'delete'
+      @application.delete_expenses(args.first)
+    when 'list'
+      @application.list_expenses
+    when 'search'
+      @application.search_expenses(args.first)
+    else
+      display_help
+    end
   end
 
+  def display_help
+    puts <<~HELP
+      An expense recording system
+
+      Commands:
+
+      add AMOUNT MEMO [DATE] - record a new expense
+      clear - delete all expenses
+      list - list all expenses
+      delete NUMBER - remove expense with id NUMBER
+      search QUERY - list expenses with a matching memo field
+    HELP
+  end
 end
 
-ed = ExpenseData.new
+CLI.new.run(ARGV)
 
-case ARGV.first
-when 'add'
-  ed.add_expenses(ARGV[1, 3])
-when 'list'
-  ed.list_expenses
-else
-  display_help
-end
 
