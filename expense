@@ -2,8 +2,6 @@
 
 require 'pg'
 
-CONNECTION = PG.connect(dbname: 'expenses')
-
 def display_help
   puts <<~HELP
     An expense recording system
@@ -18,35 +16,50 @@ def display_help
   HELP
 end
 
-def list_expenses
-  result = CONNECTION.exec('SELECT * FROM expenses ORDER BY created_on, id;')
+class ExpenseData
+  def initialize
+   @connection = PG.connect(dbname: 'expenses')
+  end
 
-  result.each do |row|
-    columns = [ row['id'].rjust(3), 
-                row['created_on'].rjust(10), 
-                row['amount'].rjust(12),
-                row['memo'] ]
+  def list_expenses
+    result = @connection.exec('SELECT * FROM expenses ORDER BY created_on, id;')
+
+    result.each do |row|
+      columns = [ row['id'].rjust(3), 
+                  row['created_on'].rjust(10), 
+                  row['amount'].rjust(12),
+                  row['memo'] ]
+      
+      puts columns.join(' | ')
+    end
+  end
+
+  def add_expenses(args)
+    amount, memo, created_on = args
+
+    abort 'You must provide an amount and memo.' unless amount =~ /^\d{1,}\.\d\d$/ && memo 
     
-    puts columns.join(' | ')
+    created_on = created_on || Date.today
+
+    sql = "INSERT INTO expenses(amount, memo, created_on) VALUES ($1, $2, $3);" 
+    @connection.exec_params(sql, [amount, memo, created_on])  
   end
 end
 
-def add_expenses(args)
-  amount, memo, created_on = args
+class CLI
+  def initialize
+    ed = ExpenseData.new
+  end
 
-  abort 'You must provide an amount and memo.' unless amount =~ /^\d{1,}\.\d\d$/ && memo 
-  
-  created_on = created_on || Date.today
-
-  sql = "INSERT INTO expenses(amount, memo, created_on) VALUES (#{amount}, '#{memo}', '#{created_on}');") 
-  statement = CONNECTION.exec(sql)
 end
+
+ed = ExpenseData.new
 
 case ARGV.first
 when 'add'
-  add_expenses(ARGV[1, 3])
+  ed.add_expenses(ARGV[1, 3])
 when 'list'
-  list_expenses
+  ed.list_expenses
 else
   display_help
 end
